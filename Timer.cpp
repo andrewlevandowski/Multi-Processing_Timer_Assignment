@@ -14,20 +14,29 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <pthread.h>
 
 using namespace std;
 
 
+int _time;
+bool handle = true;     // for signal handling
+
 Timer::Timer(){}
 Timer::~Timer(){}
+
+void sigHandler(int s)      // used to handle signal
+{
+    handle = false;
+}
 
 bool Timer::setTime(int numArgs, const char* timeArg)
 {
     try{
-        Timer::_time = 25;      // default time if no arg present
+        _time = 25;      // default time if no arg present
 
         if(numArgs == 2)
-            Timer::_time = stoi(timeArg);   // if arg passed in
+            _time = stoi(timeArg);   // if arg passed in
 
         if(numArgs > 2)
         {
@@ -44,121 +53,39 @@ bool Timer::setTime(int numArgs, const char* timeArg)
 
     return true;
 }
-    
 
-void Timer::createPipes()
+void wallClock()
 {
-    if (pipe(Timer::p1) == -1)
-    {
-        printf("Error creating pipe 1\n");
-        exit(1);
-    }
+    time_t timeInfo;
+    struct tm* lTime;
     
-    if (pipe(Timer::p2) == -1)
+    char timearr [9];       // stores time output
+	
+    signal(SIGINT, sigHandler);     // catch signal from count down timer
+
+    for(int i=0; handle; i++)       // loop wall clock output
     {
-        printf("Error creating pipe 2\n");
-        exit(1);
+        timeInfo = time(NULL);          // get time output setup
+        lTime = localtime(&timeInfo);
+        strftime(timearr, 9, "%H:%M:%S", lTime);
+
+        if(i == 0)
+            printf ("Start Time: %s\n\n", timearr);
+        else
+            printf ("Time: %s\n", timearr);
+            
+        sleep(1);
     }
+
+    printf("Alarm ringing!!\n");
+    timeInfo = time(NULL);
+    lTime = localtime(&timeInfo);
+    strftime(timearr, 9, "%H:%M:%S", lTime);
+    printf ("Final Time: %s\n", timearr);
 }
 
-void Timer::closePipes()
-{   
-    if (close(Timer::p1[0]) == -1)
-    {
-        printf("Error closing pipe 1\n");
-        exit(EXIT_FAILURE);
-    }
-    
-    if (close(Timer::p1[1]) == -1)
-    {
-        printf("Error closing pipe 1\n");
-        exit(EXIT_FAILURE);
-    }
-    
-    if (close(Timer::p2[0]) == -1)
-    {
-        printf("Error closing pipe 2\n");
-        exit(EXIT_FAILURE);
-    }
-    
-    if (close(Timer::p2[1]) == -1)
-    {
-        printf("Error closing pipe 2\n");
-        exit(EXIT_FAILURE);
-    }
-}
-
-void Timer::createProcesses()
+void countDown(int start)
 {
-    switch (fork())     // create wall clock child process
-    {
-        case -1:
-            printf("Fork error: child 1\n");
-            exit(1);
-            
-        case 0:
-            wallClock();        // get wall clock time
-            exit(1);
-            
-        default:
-            break;
-    }
-    
-    switch (fork())     // create count down child process
-    {
-        case -1:
-            printf("Fork error: child 2\n");
-            exit(1);
-            
-        case 0:
-            countDown(Timer::_time);    // count down time
-            exit(1);
-            
-        default:
-            break;
-    }
-}
-
-void Timer::closeProcesses()
-{    
-    if (wait(NULL) == -1)       // parent waits for child to terminate
-    {
-        printf("Error wating, no child process is ended!\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (wait(NULL) == -1)      // parent waits for child to terminate
-    {
-        printf("Error wating, no child process is ended!\n");
-        exit(EXIT_FAILURE);
-    }
-    
-	printf("Parent process terminating, exiting program...\n");
-    exit(EXIT_SUCCESS);
-}
-
-void Timer::countDown(int start)
-{
-	strcpy(Timer::endProc, "1");    // signal string to end process
-    
-    if (close(Timer::p2[0]) == -1)
-    {
-        printf("Error closing pipe 2\n");
-        _exit(1);
-    }
-    
-	if (close(Timer::p1[1]) == -1)
-    {
-        printf("Error closing pipe 1\n");
-        _exit(1);
-    }
-    
-    if (close(Timer::p1[0]) == -1)
-    {
-        printf("Error closing pipe 1\n");
-        _exit(1);
-    }
-    
     int tempStart = start;      // save time passed in
 
     while(start > 0)
@@ -168,83 +95,35 @@ void Timer::countDown(int start)
         else
             printf("Count Down: %d sec\n", start);
             
-        write(Timer::p2[1], "0", 2);    // signal wall clock to continue
         start--;
 		sleep(1);       // loop every second
     }
-    
-    write(Timer::p2[1], Timer::endProc, sizeof(Timer::endProc));        // signal wall clock to stop
-    
-    if (close(Timer::p2[1]) == -1)
-    {
-        printf("Error closing pipe 2");
-        _exit(EXIT_FAILURE);
-    }
-    
+     
     printf("Count Down: %d sec\n", start);
-    exit(1);
+    raise(SIGINT);      // raise signal to wall clock
 }
-
-void Timer::wallClock()
+    
+void* threadRunner(void* thr_ptr)
 {
-	strcpy(Timer::endProcCmp, "1");     // string to compare with end process string
-    
-    time_t timeInfo;
-    struct tm* lTime;
-    
-    if (close(Timer::p1[0]) == -1)
-    {
-        printf("Error closing pipe 1\n");
-        _exit(1);
-    }
-    
-	if (close(Timer::p2[1]) == -1)
-    {
-        printf("Error closing pipe 2\n");
-        _exit(1);
-    }
-    
-	if (close(Timer::p1[1]) == -1)
-    {
-        printf("Error closing pipe 1\n");
-        _exit(1);
-    }
-    
-    char timearr [9];       // stores time output
-	
-    for(int i=0;;i++)       // loop wall clock output
-    {
-        
-        timeInfo = time(NULL);
-        lTime = localtime(&timeInfo);
-		
-		int status = read(Timer::p2[0], Timer::endProc, 2);     // get signal from count down process
-        int cmp = strcmp(Timer::endProcCmp, Timer::endProc);    // compare signal strings
-        
-		if(cmp != 0)       // still counting down
-		{
-            strftime(timearr, 9, "%H:%M:%S", lTime);
+    int thrID = (intptr_t) thr_ptr;
 
-            if(i == 0)
-                printf ("Start Time: %s\n\n", timearr);
-            else
-                printf ("Time: %s\n", timearr);
-                
-            sleep(1);
-		}
-		else
-        {
-            if (close(Timer::p2[0]) == -1)
-            {
-                printf("Error closing pipe 2\n");
-                _exit(1);
-            }
-            
-            printf("Alarm ringing!!\n");
-            strftime(timearr, 9, "%H:%M:%S", lTime);
-            printf ("Final Time: %s\n", timearr);
-            exit(1);
-        }
-    }
+    if(thrID == 1)
+        wallClock();
+    if(thrID == 2)
+        countDown(_time);
 }
 
+void threadCreator()
+{
+    int thr1_ID = 1;
+    int thr2_ID = 2;
+
+    pthread_t thread1;
+    pthread_t thread2;
+
+    pthread_create (&thread1, NULL, threadRunner, (void*)(intptr_t) thr1_ID);
+    pthread_create (&thread2, NULL, threadRunner, (void*)(intptr_t) thr2_ID);
+
+    pthread_join(thread1, NULL);
+    pthread_join(thread2, NULL);
+}

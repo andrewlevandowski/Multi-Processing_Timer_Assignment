@@ -5,11 +5,11 @@
 
 CC = g++
 CPPFILES = driver.cpp Timer.cpp
-FLAG = -std=c++11
+FLAGS = -lpthread -std=c++11
 EXEC = tevent
 
 build:
-	$(CC) $(CPPFILES) -o $(EXEC) $(FLAG)
+	$(CC) $(CPPFILES) -o $(EXEC) $(FLAGS)
 	rm -f *.o
 
 clean:

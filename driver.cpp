@@ -13,7 +13,6 @@ using namespace std;
 
 int main(int argc, const char * argv[])
 {
-
     Timer* oTimer = new Timer;      // create Timer object
 
     if(!oTimer->setTime(argc, argv[1]))     // validates command line arg
@@ -22,11 +21,8 @@ int main(int argc, const char * argv[])
         return 0;
     }
     
-    oTimer->createPipes();
-    oTimer->createProcesses();
-    oTimer->closePipes();
-    oTimer->closeProcesses();
-    
+    threadCreator();        // create and execute threads
+
     delete oTimer;
     return 0;
 }
